@@ -37,7 +37,7 @@ def get_data():
     # API call to download data from yahoo finance
     data = yf.download(tickers=tickers, start=start, end=end, interval='1d',)['Adj Close']
     
-    # Convert the data to CSV and encode 
+    # Convert  the data to CSV and encode 
     data = data.to_csv(index=True).encode()
 
     # Create a storage client

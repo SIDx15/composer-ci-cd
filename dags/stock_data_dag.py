@@ -49,7 +49,7 @@ def get_data():
     # Filter the list of buckets to only include those with the desired prefix
     buckets_with_prefix = [bucket for bucket in buckets if fnmatch.fnmatch(bucket.name, 'the_demo_*')]
 
-    #Choose the matching buckets to upload the data to
+    #Choose  the matching buckets to upload the data to
     bucket = buckets_with_prefix[0]
 
     #  Upload the data to the selected bucket

@@ -43,7 +43,7 @@ def get_data():
     # Create a storage client
     storage_client = storage.Client()
 
-    # Get a list of all buckets
+    # Get a  list of all buckets
     buckets = list(storage_client.list_buckets())
 
     # Filter the list of buckets to only include those with the desired prefix

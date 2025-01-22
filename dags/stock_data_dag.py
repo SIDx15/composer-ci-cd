@@ -52,7 +52,7 @@ def get_data():
     #Choose the matching buckets to upload the data to
     bucket = buckets_with_prefix[0]
 
-    # Upload the data to the selected bucket
+    #  Upload the data to the selected bucket
     blob = bucket.blob('stock_data.csv')
     blob.upload_from_string(data)
     print(f"data sucessfully uploadesd to {bucket}")

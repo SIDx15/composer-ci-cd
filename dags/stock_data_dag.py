@@ -40,7 +40,7 @@ def get_data():
     # Convert  the data to CSV and encode 
     data = data.to_csv(index=True).encode()
 
-    # Create a storage client
+    # Create a storage  client
     storage_client = storage.Client()
 
     # Get a  list of all buckets

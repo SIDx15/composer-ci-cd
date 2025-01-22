@@ -1,84 +1,73 @@
 import argparse
 import glob
 import os
-from shutil import copytree, ignore_patterns
+from pathlib import Path
 import tempfile
 from typing import List, Tuple
-
-# Imports the Google Cloud client library
 from google.cloud import storage
-
+import shutil
 
 def _create_dags_list(dags_directory: str) -> Tuple[str, List[str]]:
     temp_dir = tempfile.mkdtemp()
+    ignored = ["__init__.py", "*_test.py"]
+    
+    # Use pathlib for better path handling
+    src_path = Path(dags_directory)
+    dst_path = Path(temp_dir)
+    
+    # Copy files excluding ignored patterns
+    for item in src_path.glob('**/*'):
+        if item.is_file() and not any(item.match(pat) for pat in ignored):
+            relative_path = item.relative_to(src_path)
+            dst_file = dst_path / relative_path
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, dst_file)
 
-    # ignore non-DAG Python files
-    files_to_ignore = ignore_patterns("__init__.py", "*_test.py")
+    # Get all Python files
+    dags = [str(f) for f in dst_path.glob('**/*.py')]
+    return (str(temp_dir), dags)
 
-    # Copy everything but the ignored files to a temp directory
-    copytree(dags_directory, f"{temp_dir}/", ignore=files_to_ignore, dirs_exist_ok=True)
-
-    # The only Python files left in our temp directory are DAG files
-    # so we can exclude all non Python files
-    dags = glob.glob(f"{temp_dir}/*.py")
-    return (temp_dir, dags)
-
-
-def upload_dags_to_composer(
-    dags_directory: str, bucket_name: str, name_replacement: str = "dags/"
-) -> None:
+def upload_dags_to_composer(dags_directory: str, bucket_name: str, name_replacement: str = "dags/") -> None:
     """
-    Given a directory, this function moves all DAG files from that directory
-    to a temporary directory, then uploads all contents of the temporary directory
-    to a given cloud storage bucket
+    Uploads DAG files to a Cloud Composer environment's bucket.
+    
     Args:
-        dags_directory (str): a fully qualified path to a directory that contains a "dags/" subdirectory
-        bucket_name (str): the GCS bucket of the Cloud Composer environment to upload DAGs to
-        name_replacement (str, optional): the name of the "dags/" subdirectory that will be used when constructing the temporary directory path name Defaults to "dags/".
+        dags_directory: Path to directory containing DAGs
+        bucket_name: GCS bucket name without gs:// prefix
+        name_replacement: Target directory in bucket (default: "dags/")
     """
     temp_dir, dags = _create_dags_list(dags_directory)
+    
+    if not dags:
+        print("No DAGs found to upload.")
+        return
 
-    if len(dags) > 0:
-        # Note - the GCS client library does not currently support batch requests on uploads
-        # if you have a large number of files, consider using
-        # the Python subprocess module to run gsutil -m cp -r on your dags
-        # See https://cloud.google.com/storage/docs/gsutil/commands/cp for more info
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(bucket_name)
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    
+    for dag_path in dags:
+        try:
+            # Convert to relative path and construct destination
+            rel_path = os.path.relpath(dag_path, temp_dir)
+            dest_path = os.path.join(name_replacement, rel_path)
+            
+            # Upload file
+            blob = bucket.blob(dest_path)
+            blob.upload_from_filename(dag_path)
+            print(f"Uploaded: {dest_path}")
+            
+        except Exception as e:
+            print(f"Error uploading {dag_path}: {str(e)}")
 
-        for dag in dags:
-            # Remove path to temp dir
-            dag = dag.replace(f"{temp_dir}/", name_replacement)
-
-            try:
-                # Upload to your bucket
-                blob = bucket.blob(dag)
-                blob.upload_from_filename(dag)
-                print(f"File {dag} uploaded to {bucket_name}/{dag}.")
-            except FileNotFoundError:
-                current_directory = os.listdir()
-                print(
-                    f"{name_replacement} directory not found in {current_directory}, you may need to override the default value of name_replacement to point to a relative directory"
-                )
-                raise
-
-    else:
-        print("No DAGs to upload.")
-
+    # Cleanup
+    shutil.rmtree(temp_dir)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument(
-        "--dags_directory",
-        help="Relative path to the source directory containing your DAGs",
-    )
-    parser.add_argument(
-        "--dags_bucket",
-        help="Name of the DAGs bucket of your Composer environment without the gs:// prefix",
-    )
-
+    parser = argparse.ArgumentParser(description="Upload DAGs to Cloud Composer")
+    parser.add_argument("--dags_directory", required=True, 
+                       help="Path to source DAGs directory")
+    parser.add_argument("--dags_bucket", required=True,
+                       help="Composer DAGs bucket name (without gs:// prefix)")
+    
     args = parser.parse_args()
-
     upload_dags_to_composer(args.dags_directory, args.dags_bucket)
